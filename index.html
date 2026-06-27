@@ -245,7 +245,7 @@ const CONFIG = {
   minFreqVoice: 250, maxFreqVoice: 3500,
   minKnockInterval: 400,
   knockWindowMs: 6000,
-  voiceSustainFrames: 10,
+  voiceSustainFrames: 15,
   cooldownKnockMs: 1500,
   cooldownVoiceMs: 5000,
   calibrationMs: 2500,
@@ -348,9 +348,12 @@ function analyze(sr) {
     nivelBar.style.width = '0%'; statusEl.className = ''; statusEl.textContent = '🔇 En silencio'; return;
   }
 
+  // Si hay energía de golpe significativa, suprimir voz (el golpe resuena en banda vocal)
+  const vozReal = ke < knockThresh * 0.5 ? ve : 0;
+
   const now = Date.now();
   const knock = detectKnock(ke, now);
-  const voice = detectVoice(ve, now);
+  const voice = detectVoice(vozReal, now);
 
   nivelBar.style.width = Math.round(oe*100)+'%';
   statusEl.className = 'esucha'; statusEl.textContent = '🔊 Escuchando...';
