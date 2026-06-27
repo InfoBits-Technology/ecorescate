@@ -247,11 +247,13 @@ const CONFIG = {
   maxFreqKnock: 400,
   minFreqVoice: 250,
   maxFreqVoice: 3500,
-  knockThreshold: 0.20,
-  voiceThreshold: 0.35,
-  minKnockInterval: 500,
-  cooldownMs: 2000,
+  knockThreshold: 0.25,
+  voiceThreshold: 0.20,
+  knockJumpFactor: 2.0,
+  minKnockInterval: 600,
   knockWindowMs: 4000,
+  voiceSustainFrames: 12,
+  cooldownMs: 2000,
   historySize: 60,
 };
 
@@ -270,6 +272,8 @@ let lastKnockTime = 0;
 let lastAlertTime = { knock: 0, voice: 0 };
 let alertCount = 0;
 let consecutiveKnocks = [];
+let prevKnockEnergy = 0;
+let voiceFramesAbove = 0;
 
 // ============================================================
 // DOM refs
@@ -312,25 +316,28 @@ function getEnergyInRange(data, sampleRate, minHz, maxHz) {
 }
 
 function detectKnock(energy, now) {
-  // Limpiar golpes viejos
   consecutiveKnocks = consecutiveKnocks.filter(t => now - t < CONFIG.knockWindowMs);
 
-  const isKnock = energy > CONFIG.knockThreshold;
-  const timeSinceLast = now - lastKnockTime;
+  // Un golpe es un salto repentino de energía (no ruido constante)
+  const isJump = prevKnockEnergy > 0.01 && energy > prevKnockEnergy * CONFIG.knockJumpFactor;
+  const aboveThreshold = energy > CONFIG.knockThreshold;
+  prevKnockEnergy = energy;
 
-  if (isKnock && timeSinceLast > CONFIG.minKnockInterval) {
-    consecutiveKnocks.push(now);
-    lastKnockTime = now;
+  if (isJump && aboveThreshold) {
+    const timeSinceLast = now - lastKnockTime;
+    if (timeSinceLast > CONFIG.minKnockInterval) {
+      consecutiveKnocks.push(now);
+      lastKnockTime = now;
 
-    const recent = consecutiveKnocks.length;
-
-    if (recent >= 3 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
-      lastAlertTime.knock = now;
-      return { label: `¡${recent} golpes seguidos!`, urgency: 'alta', force: true };
-    }
-    if (recent === 2 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
-      lastAlertTime.knock = now;
-      return { label: '2 golpes seguidos', urgency: 'media', force: false };
+      const recent = consecutiveKnocks.length;
+      if (recent >= 3 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
+        lastAlertTime.knock = now;
+        return { label: `¡${recent} golpes!`, urgency: 'alta', force: true };
+      }
+      if (recent === 2 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
+        lastAlertTime.knock = now;
+        return { label: '2 golpes', urgency: 'media', force: false };
+      }
     }
   }
   return null;
@@ -338,10 +345,14 @@ function detectKnock(energy, now) {
 
 function detectVoice(energy, now) {
   if (energy > CONFIG.voiceThreshold) {
-    if (now - lastAlertTime.voice > 5000) {
+    voiceFramesAbove++;
+    if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > 5000) {
+      voiceFramesAbove = 0;
       lastAlertTime.voice = now;
-      return { label: 'Posible voz detectada', urgency: 'alta', force: true };
+      return { label: 'Posible voz detectada (sostenida)', urgency: 'alta', force: true };
     }
+  } else {
+    voiceFramesAbove = 0;
   }
   return null;
 }
@@ -365,7 +376,7 @@ function analyze(sampleRate) {
   historyIndex++;
 
   // Solo detectar si hay energía mínima (evita falsos positivos en silencio)
-  if (overallEnergy < 0.03) {
+  if (overallEnergy < 0.04) {
     nivelBar.style.width = '0%';
     statusEl.className = '';
     statusEl.textContent = '🔇 En silencio - esperando sonidos';
@@ -376,13 +387,10 @@ function analyze(sampleRate) {
   const knockEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqKnock, CONFIG.maxFreqKnock);
   const voiceEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqVoice, CONFIG.maxFreqVoice);
 
-  // Si hay energía de golpe significativa, suprimir detección de voz (un golpe no es voz)
-  const realVoiceEnergy = voiceEnergy > knockEnergy * 1.5 ? voiceEnergy : 0;
-
   // Detect
   const now = Date.now();
   const knock = detectKnock(knockEnergy, now);
-  const voice = detectVoice(realVoiceEnergy, now);
+  const voice = detectVoice(voiceEnergy, now);
 
   // Update UI
   nivelBar.style.width = Math.round(overallEnergy * 100) + '%';
