@@ -247,8 +247,8 @@ const CONFIG = {
   maxFreqKnock: 400,
   minFreqVoice: 250,
   maxFreqVoice: 3500,
-  knockThreshold: 0.35,
-  voiceThreshold: 0.25,
+  knockThreshold: 0.20,
+  voiceThreshold: 0.35,
   minKnockInterval: 500,
   cooldownMs: 2000,
   knockWindowMs: 4000,
@@ -376,10 +376,13 @@ function analyze(sampleRate) {
   const knockEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqKnock, CONFIG.maxFreqKnock);
   const voiceEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqVoice, CONFIG.maxFreqVoice);
 
+  // Si hay energía de golpe significativa, suprimir detección de voz (un golpe no es voz)
+  const realVoiceEnergy = voiceEnergy > knockEnergy * 1.5 ? voiceEnergy : 0;
+
   // Detect
   const now = Date.now();
   const knock = detectKnock(knockEnergy, now);
-  const voice = detectVoice(voiceEnergy, now);
+  const voice = detectVoice(realVoiceEnergy, now);
 
   // Update UI
   nivelBar.style.width = Math.round(overallEnergy * 100) + '%';
