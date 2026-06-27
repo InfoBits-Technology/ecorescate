@@ -249,9 +249,9 @@ const CONFIG = {
   cooldownKnockMs: 1500,
   cooldownVoiceMs: 5000,
   calibrationMs: 2500,
-  margin: 2.8,
-  minKnockThreshold: 0.12,
-  minVoiceThreshold: 0.10,
+  margin: 2.0,
+  minKnockThreshold: 0.08,
+  minVoiceThreshold: 0.07,
   silenceFloor: 0.025,
 };
 
@@ -349,7 +349,7 @@ function analyze(sr) {
   }
 
   // Si hay energía de golpe significativa, suprimir voz (el golpe resuena en banda vocal)
-  const vozReal = ke < knockThresh * 0.5 ? ve : 0;
+  const vozReal = ke < knockThresh * 0.7 ? ve : 0;
 
   const now = Date.now();
   const knock = detectKnock(ke, now);
