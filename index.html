@@ -247,13 +247,14 @@ const CONFIG = {
   maxFreqKnock: 400,
   minFreqVoice: 250,
   maxFreqVoice: 3500,
-  knockThreshold: 0.25,
-  voiceThreshold: 0.20,
-  knockJumpFactor: 2.0,
-  minKnockInterval: 600,
-  knockWindowMs: 4000,
-  voiceSustainFrames: 12,
-  cooldownMs: 2000,
+  knockThreshold: 0.15,
+  voiceThreshold: 0.12,
+  minKnockInterval: 400,
+  knockWindowMs: 8000,
+  voiceSustainFrames: 6,
+  cooldownKnockMs: 3000,
+  cooldownVoiceMs: 4000,
+  silenceFloor: 0.02,
   historySize: 60,
 };
 
@@ -272,7 +273,6 @@ let lastKnockTime = 0;
 let lastAlertTime = { knock: 0, voice: 0 };
 let alertCount = 0;
 let consecutiveKnocks = [];
-let prevKnockEnergy = 0;
 let voiceFramesAbove = 0;
 
 // ============================================================
@@ -318,23 +318,18 @@ function getEnergyInRange(data, sampleRate, minHz, maxHz) {
 function detectKnock(energy, now) {
   consecutiveKnocks = consecutiveKnocks.filter(t => now - t < CONFIG.knockWindowMs);
 
-  // Un golpe es un salto repentino de energía (no ruido constante)
-  const isJump = prevKnockEnergy > 0.01 && energy > prevKnockEnergy * CONFIG.knockJumpFactor;
-  const aboveThreshold = energy > CONFIG.knockThreshold;
-  prevKnockEnergy = energy;
-
-  if (isJump && aboveThreshold) {
+  if (energy > CONFIG.knockThreshold) {
     const timeSinceLast = now - lastKnockTime;
     if (timeSinceLast > CONFIG.minKnockInterval) {
       consecutiveKnocks.push(now);
       lastKnockTime = now;
 
       const recent = consecutiveKnocks.length;
-      if (recent >= 3 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
+      if (recent >= 3 && now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
         lastAlertTime.knock = now;
         return { label: `¡${recent} golpes!`, urgency: 'alta', force: true };
       }
-      if (recent === 2 && now - lastAlertTime.knock > CONFIG.cooldownMs) {
+      if (recent === 2 && now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
         lastAlertTime.knock = now;
         return { label: '2 golpes', urgency: 'media', force: false };
       }
@@ -346,10 +341,10 @@ function detectKnock(energy, now) {
 function detectVoice(energy, now) {
   if (energy > CONFIG.voiceThreshold) {
     voiceFramesAbove++;
-    if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > 5000) {
+    if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > CONFIG.cooldownVoiceMs) {
       voiceFramesAbove = 0;
       lastAlertTime.voice = now;
-      return { label: 'Posible voz detectada (sostenida)', urgency: 'alta', force: true };
+      return { label: 'Posible voz detectada', urgency: 'alta', force: true };
     }
   } else {
     voiceFramesAbove = 0;
@@ -376,7 +371,7 @@ function analyze(sampleRate) {
   historyIndex++;
 
   // Solo detectar si hay energía mínima (evita falsos positivos en silencio)
-  if (overallEnergy < 0.04) {
+  if (overallEnergy < CONFIG.silenceFloor) {
     nivelBar.style.width = '0%';
     statusEl.className = '';
     statusEl.textContent = '🔇 En silencio - esperando sonidos';
