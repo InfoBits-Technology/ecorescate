@@ -1,0 +1,13 @@
+{
+  "name": "RescApp - Detección de Sonidos",
+  "short_name": "RescApp",
+  "description": "Detección de sonidos humanos bajo escombros",
+  "start_url": "rescate.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    { "src": "rescate-icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
