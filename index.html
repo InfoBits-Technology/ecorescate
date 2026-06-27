@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>RescApp - Detección de Sonidos</title>
+<title>ECORESCATE - Detección de Sonidos</title>
 <link rel="manifest" href="rescate-manifest.json">
 <link rel="icon" href="rescate-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="rescate-icon.svg">
@@ -206,7 +206,7 @@ h1 small {
 </head>
 <body>
 <div class="container">
-  <h1>RESC<span style="color:#ffd93d;">APP</span> <small>Escucha bajo los escombros 🇻🇪</small></h1>
+  <h1>ECO<span style="color:#ffd93d;">RESCATE</span> <small>Escucha bajo los escombros 🇻🇪</small></h1>
 
   <div id="status">Presiona INICIAR y acerca el teléfono a los escombros</div>
 
@@ -229,55 +229,35 @@ h1 small {
 
   <div class="instrucciones">
     <strong>⚠ Cómo usar:</strong> Pon el teléfono <strong>sobre o muy cerca</strong> de los escombros.
-    La app escucha golpes y voces. Si detecta algo, vibrará y mostrará una alerta.
+    La app escucha golpes y voz humana. Si detecta algo, vibrará y mostrará una alerta.
     <strong>Permite el micrófono</strong> cuando el navegador lo pida.
   </div>
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
-    Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;
+    Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
+    Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
   </div>
 </div>
 
 <script>
-// ============================================================
-// Config
-// ============================================================
 const CONFIG = {
   fftSize: 2048,
-  minFreqKnock: 80,
-  maxFreqKnock: 400,
-  minFreqVoice: 250,
-  maxFreqVoice: 3500,
-  knockThreshold: 0.15,
-  voiceThreshold: 0.12,
-  minKnockInterval: 400,
-  knockWindowMs: 8000,
-  voiceSustainFrames: 6,
-  cooldownKnockMs: 3000,
+  minFreqKnock: 80, maxFreqKnock: 400,
+  minFreqVoice: 250, maxFreqVoice: 3500,
+  knockThreshold: 0.13,
+  voiceThreshold: 0.10,
+  minKnockInterval: 300,
+  knockWindowMs: 6000,
+  voiceSustainFrames: 8,
+  cooldownKnockMs: 1000,
   cooldownVoiceMs: 4000,
   silenceFloor: 0.02,
-  historySize: 60,
 };
 
-// ============================================================
-// State
-// ============================================================
-let audioCtx = null;
-let analyser = null;
-let mediaStream = null;
-let source = null;
-let isListening = false;
-let animFrame = null;
-let energyHistory = new Float32Array(CONFIG.historySize);
-let historyIndex = 0;
-let lastKnockTime = 0;
-let lastAlertTime = { knock: 0, voice: 0 };
-let alertCount = 0;
-let consecutiveKnocks = [];
-let voiceFramesAbove = 0;
+let audioCtx = null, analyser = null, mediaStream = null, source = null;
+let isListening = false, animFrame = null;
+let lastKnockTime = -99999, lastAlertTime = { knock: -99999, voice: -99999 };
+let alertCount = 0, consecutiveKnocks = [], voiceFramesAbove = 0;
 
-// ============================================================
-// DOM refs
-// ============================================================
 const statusEl = document.getElementById('status');
 const nivelBar = document.getElementById('nivel-bar');
 const canvas = document.getElementById('waveCanvas');
@@ -288,9 +268,6 @@ const btnCompartir = document.getElementById('btnCompartir');
 const alertasEl = document.getElementById('alertas');
 const alertaCountEl = document.getElementById('alertaCount');
 
-// ============================================================
-// Audio Analysis
-// ============================================================
 function resizeCanvas() {
   const rect = canvas.parentElement.getBoundingClientRect();
   canvas.width = rect.width * (window.devicePixelRatio || 1);
@@ -306,333 +283,203 @@ function getEnergyInRange(data, sampleRate, minHz, maxHz) {
   const binFreq = sampleRate / (2 * binCount);
   const startBin = Math.max(0, Math.floor(minHz / binFreq));
   const endBin = Math.min(binCount - 1, Math.ceil(maxHz / binFreq));
-  let sum = 0;
-  let count = 0;
-  for (let i = startBin; i <= endBin; i++) {
-    sum += data[i];
-    count++;
-  }
+  let sum = 0, count = 0;
+  for (let i = startBin; i <= endBin; i++) sum += data[i], count++;
   return count > 0 ? sum / count / 255 : 0;
 }
 
 function detectKnock(energy, now) {
   consecutiveKnocks = consecutiveKnocks.filter(t => now - t < CONFIG.knockWindowMs);
-
-  if (energy > CONFIG.knockThreshold) {
-    const timeSinceLast = now - lastKnockTime;
-    if (timeSinceLast > CONFIG.minKnockInterval) {
-      consecutiveKnocks.push(now);
-      lastKnockTime = now;
-
-      const recent = consecutiveKnocks.length;
-      if (recent >= 3 && now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
-        lastAlertTime.knock = now;
-        return { label: `¡${recent} golpes!`, urgency: 'alta', force: true };
-      }
-      if (recent === 2 && now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
-        lastAlertTime.knock = now;
-        return { label: '2 golpes', urgency: 'media', force: false };
-      }
+  if (energy > CONFIG.knockThreshold && now - lastKnockTime > CONFIG.minKnockInterval) {
+    consecutiveKnocks.push(now);
+    lastKnockTime = now;
+    const n = consecutiveKnocks.length;
+    if (now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
+      lastAlertTime.knock = now;
+      if (n >= 3) return { label: `¡${n} golpes seguidos!`, urg: 'alta', force: true };
+      if (n === 2) return { label: '2 golpes', urg: 'alta', force: true };
+      return { label: 'Golpe detectado', urg: 'media', force: true };
     }
   }
   return null;
 }
 
 function detectVoice(energy, now) {
-  if (energy > CONFIG.voiceThreshold) {
-    voiceFramesAbove++;
-    if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > CONFIG.cooldownVoiceMs) {
-      voiceFramesAbove = 0;
-      lastAlertTime.voice = now;
-      return { label: 'Posible voz detectada', urgency: 'alta', force: true };
-    }
-  } else {
+  if (energy > CONFIG.voiceThreshold) voiceFramesAbove++;
+  else voiceFramesAbove = 0;
+  if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > CONFIG.cooldownVoiceMs) {
     voiceFramesAbove = 0;
+    lastAlertTime.voice = now;
+    return { label: 'Posible voz humana', urg: 'alta', force: true };
   }
   return null;
 }
 
 function analyze(sampleRate) {
-  const timeData = new Uint8Array(analyser.frequencyBinCount);
   const freqData = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteTimeDomainData(timeData);
   analyser.getByteFrequencyData(freqData);
+  const timeData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(timeData);
 
-  // Overall energy (time domain)
   let sum = 0;
   for (let i = 0; i < timeData.length; i++) {
-    const val = (timeData[i] - 128) / 128;
-    sum += val * val;
+    const v = (timeData[i] - 128) / 128;
+    sum += v * v;
   }
   const overallEnergy = Math.min(1, Math.sqrt(sum / timeData.length) * 3);
 
-  // Smooth history
-  energyHistory[historyIndex % CONFIG.historySize] = overallEnergy;
-  historyIndex++;
-
-  // Solo detectar si hay energía mínima (evita falsos positivos en silencio)
   if (overallEnergy < CONFIG.silenceFloor) {
     nivelBar.style.width = '0%';
     statusEl.className = '';
-    statusEl.textContent = '🔇 En silencio - esperando sonidos';
-    return false;
+    statusEl.textContent = '🔇 En silencio';
+    return;
   }
 
-  // Frequency band energies
   const knockEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqKnock, CONFIG.maxFreqKnock);
   const voiceEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqVoice, CONFIG.maxFreqVoice);
-
-  // Detect
   const now = Date.now();
   const knock = detectKnock(knockEnergy, now);
   const voice = detectVoice(voiceEnergy, now);
 
-  // Update UI
   nivelBar.style.width = Math.round(overallEnergy * 100) + '%';
   statusEl.className = 'esucha';
   statusEl.textContent = '🔊 Escuchando...';
 
   if (knock) {
-    addAlerta(knock.label, 'golpe', knock.urgency);
+    addAlerta(knock.label, 'golpe');
     statusEl.className = 'alerta';
     statusEl.textContent = '🔴 ' + knock.label;
     if (knock.force) vibrar();
-    return true;
+    return;
   }
   if (voice) {
-    addAlerta(voice.label, 'voz', voice.urgency);
+    addAlerta(voice.label, 'voz');
     statusEl.className = 'alerta';
     statusEl.textContent = '🔴 ' + voice.label;
     if (voice.force) vibrar();
-    return true;
   }
-
-  return false;
 }
 
-// ============================================================
-// Waveform visualizer
-// ============================================================
-let waveHistory = [];
 function drawWave(timeData) {
-  const w = canvas.width;
-  const h = canvas.height;
-  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height, dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-
   const midY = h / 2;
   const step = Math.max(1, Math.floor(timeData.length / (w / dpr)));
-
   ctx.strokeStyle = '#e94560';
   ctx.lineWidth = Math.max(1, dpr * 1.5);
   ctx.beginPath();
-
   let maxVal = 0;
   for (let i = 0; i < timeData.length; i += step) {
-    const val = Math.abs(timeData[i] - 128) / 128;
-    if (val > maxVal) maxVal = val;
+    const v = Math.abs(timeData[i] - 128) / 128;
+    if (v > maxVal) maxVal = v;
   }
   if (maxVal < 0.01) maxVal = 0.01;
-
   const scale = (h * 0.9) / 2 / Math.max(0.1, Math.min(1, maxVal * 2));
-
   for (let i = 0; i < timeData.length; i += step) {
     const x = (i / timeData.length) * w;
-    const val = (timeData[i] - 128) / 128;
-    const y = midY + val * scale;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    const y = midY + ((timeData[i] - 128) / 128) * scale;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.stroke();
-
-  // Energy indicator dots
-  const avgEnergy = Array.from(energyHistory).reduce((a,b)=>a+b,0) / CONFIG.historySize;
-  if (avgEnergy > 0.05) {
-    ctx.fillStyle = avgEnergy > 0.2 ? '#ffd93d' : '#0f3460';
-    ctx.beginPath();
-    ctx.arc(w - 20 * dpr, 20 * dpr, 8 * dpr, 0, Math.PI * 2);
-    ctx.fill();
-  }
 }
 
-// ============================================================
-// Alert system
-// ============================================================
-function addAlerta(msg, tipo, urgency) {
+function addAlerta(msg, tipo) {
   alertCount++;
   alertaCountEl.textContent = alertCount;
-
   const div = document.createElement('div');
   div.className = 'alerta-item tipo-' + tipo;
   const ts = new Date();
-  const time = ts.getHours().toString().padStart(2,'0') + ':' +
-               ts.getMinutes().toString().padStart(2,'0') + ':' +
-               ts.getSeconds().toString().padStart(2,'0');
-  const icon = tipo === 'golpe' ? '💥' : tipo === 'error' ? '🚫' : '🔊';
+  const time = ts.getHours().toString().padStart(2,'0') + ':' + ts.getMinutes().toString().padStart(2,'0') + ':' + ts.getSeconds().toString().padStart(2,'0');
+  const icon = tipo === 'golpe' ? '💥' : '🔊';
   div.innerHTML = `<span class="time">${time}</span>${icon} ${msg}`;
   alertasEl.prepend(div);
-
-  // Keep max 50
-  while (alertasEl.children.length > 50) {
-    alertasEl.removeChild(alertasEl.lastChild);
-  }
+  while (alertasEl.children.length > 50) alertasEl.removeChild(alertasEl.lastChild);
 }
 
 function vibrar() {
-  if (navigator.vibrate) {
-    navigator.vibrate([200, 100, 200, 100, 400]);
-  }
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
 }
 
-// ============================================================
-// Audio loop
-// ============================================================
 function audioLoop() {
   if (!isListening) return;
-
   const timeData = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(timeData);
-
   drawWave(timeData);
-
-  if (audioCtx) {
-    analyze(audioCtx.sampleRate);
-  }
-
+  if (audioCtx) analyze(audioCtx.sampleRate);
   animFrame = requestAnimationFrame(audioLoop);
 }
 
-// ============================================================
-// Start / Stop
-// ============================================================
 function errorMsg(msg) {
   statusEl.className = '';
   statusEl.textContent = '❌ ' + msg;
-  addAlerta('ERROR: ' + msg, 'error', 'alta');
 }
 
 async function iniciar() {
   if (isListening) return;
-
-  // Verificar contexto seguro (HTTPS o localhost)
-  const isSecure = window.isSecureContext ||
-    location.hostname === 'localhost' ||
-    location.hostname === '127.0.0.1' ||
-    location.hostname === '[::1]';
-  if (!isSecure) {
-    errorMsg('Debes usar HTTPS o localhost. ' + location.hostname + ' no es seguro.');
+  if (!window.isSecureContext && !['localhost','127.0.0.1','[::1]'].includes(location.hostname)) {
+    errorMsg('Debes usar HTTPS o localhost.');
     return;
   }
-
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
     if (audioCtx) audioCtx.close();
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    // Reanudar si está suspendido (política de autoplay)
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = CONFIG.fftSize;
     source = audioCtx.createMediaStreamSource(mediaStream);
     source.connect(analyser);
-
     isListening = true;
     btnIniciar.textContent = '▶ ACTIVO';
     btnIniciar.classList.add('activo');
     btnDetener.classList.add('activo');
-    statusEl.textContent = '🔊 Escuchando... Acerca el teléfono a los escombros';
+    statusEl.textContent = '🔊 Escuchando...';
     statusEl.className = 'esucha';
-
+    lastKnockTime = -99999;
+    lastAlertTime = { knock: -99999, voice: -99999 };
+    consecutiveKnocks = [];
+    voiceFramesAbove = 0;
     audioLoop();
   } catch (err) {
     console.error(err);
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      errorMsg('Permiso de micrófono denegado. Revisa la configuración del navegador.');
-    } else if (err.name === 'NotFoundError') {
-      errorMsg('No se encontró micrófono en este dispositivo.');
-    } else if (err.name === 'NotSupportedError') {
-      errorMsg('Tu navegador no soporta audio. Usa Chrome o Safari actualizado.');
-    } else if (err.name === 'AbortError') {
-      errorMsg('La solicitud de micrófono fue cancelada.');
-    } else {
-      errorMsg('Error inesperado: ' + (err.message || err));
-    }
+    if (err.name === 'NotAllowedError') errorMsg('Permiso de micrófono denegado.');
+    else if (err.name === 'NotFoundError') errorMsg('No se encontró micrófono.');
+    else errorMsg('Error: ' + (err.message || err));
   }
 }
 
 function detener() {
   isListening = false;
   if (animFrame) cancelAnimationFrame(animFrame);
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(t => t.stop());
-  }
-  if (audioCtx) {
-    audioCtx.close();
-    audioCtx = null;
-  }
-  analyser = null;
-  source = null;
-  mediaStream = null;
-
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  audioCtx = null; analyser = null; source = null; mediaStream = null;
   btnIniciar.textContent = '▶ INICIAR';
   btnIniciar.classList.remove('activo');
   btnDetener.classList.remove('activo');
   statusEl.className = '';
-  statusEl.textContent = 'Detenido. Presiona INICIAR para escuchar.';
+  statusEl.textContent = 'Detenido';
 }
 
-// ============================================================
-// Compartir
-// ============================================================
 if (navigator.share) {
-  btnCompartir.addEventListener('click', () => {
-    navigator.share({
-      title: 'RescApp',
-      text: 'App gratuita para detectar sonidos humanos bajo escombros. Abre en:',
-      url: window.location.href,
-    });
-  });
+  btnCompartir.addEventListener('click', () => navigator.share({ title: 'ECORESCATE', text: 'App gratuita para detectar sonidos humanos bajo escombros. Abre en:', url: location.href }));
 } else {
-  btnCompartir.addEventListener('click', () => {
-    navigator.clipboard.writeText(window.location.href);
-    btnCompartir.textContent = '✓';
-    setTimeout(() => { btnCompartir.textContent = '📤'; }, 2000);
-  });
+  btnCompartir.addEventListener('click', () => { navigator.clipboard.writeText(location.href); btnCompartir.textContent = '✓'; setTimeout(() => { btnCompartir.textContent = '📤'; }, 2000); });
 }
 
-// ============================================================
-// Eventos
-// ============================================================
 btnIniciar.addEventListener('click', iniciar);
 btnDetener.addEventListener('click', detener);
 
-// Evitar que la pantalla se apague mientras escucha
 let wakeLock = null;
 async function requestWakeLock() {
-  try {
-    if ('wakeLock' in navigator) {
-      wakeLock = await navigator.wakeLock.request('screen');
-    }
-  } catch(e) {}
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
 }
 btnIniciar.addEventListener('click', requestWakeLock);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isListening) requestWakeLock(); });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && isListening) {
-    requestWakeLock();
-  }
-});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('rescate-sw.js');
 
-// Register service worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('rescate-sw.js');
-}
-
-console.log('RescApp cargada. 🇻🇪');
+console.log('ECORESCATE cargada. 🇻🇪');
 </script>
 </body>
 </html>
