@@ -206,7 +206,7 @@ h1 small {
 </head>
 <body>
 <div class="container">
-  <h1>ECO<span style="color:#ffd93d;">RESCATE</span> <small>Escucha bajo los escombros 🇻🇪</small></h1>
+  <h1>ECO<span style="color:#ffd93d;">RESCATE</span> <small>Escucha bajo los escombros</small></h1>
 
   <div id="status">Presiona INICIAR y acerca el teléfono a los escombros</div>
 
@@ -220,48 +220,96 @@ h1 small {
   <div id="contador">Alertas: <span id="alertaCount">0</span></div>
 
   <div id="controles">
-    <button class="btn btn-escuchar" id="btnIniciar">▶ INICIAR</button>
-    <button class="btn btn-detener" id="btnDetener">■ DETENER</button>
-    <button class="btn btn-compartir" id="btnCompartir">📤</button>
+    <button class="btn btn-escuchar" id="btnIniciar"> INICIAR</button>
+    <button class="btn btn-detener" id="btnDetener"> DETENER</button>
+    <button class="btn btn-compartir" id="btnCompartir"></button>
   </div>
 
   <div class="alertas" id="alertas"></div>
 
   <div class="instrucciones">
-    <strong>⚠ Cómo usar:</strong> Pon el teléfono <strong>sobre o muy cerca</strong> de los escombros.
-    La app escucha golpes y voz humana. Si detecta algo, vibrará y mostrará una alerta.
+    <strong> Cómo usar:</strong> Pon el teléfono <strong>sobre o muy cerca</strong> de los escombros.
+    Al iniciar, mantén <strong>silencio 3 segundos</strong> para calibrar el ruido del ambiente.
+    Luego la app escucha golpes rtmicos y voz humana. Si detecta algo, vibrar y mostrar una alerta.
     <strong>Permite el micrófono</strong> cuando el navegador lo pida.
   </div>
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
-    Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
-    Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
+    Creado por Jos Vsquez &lt;jf.vasquez@outlook.es&gt;<br />
+    Aplicacin diseada para la comunidad venezolana desde Colombia
   </div>
 </div>
 
 <script>
+// ============================================================
+// Config
+// ============================================================
 const CONFIG = {
   fftSize: 2048,
   minFreqKnock: 80, maxFreqKnock: 400,
   minFreqVoice: 250, maxFreqVoice: 3500,
-  minKnockInterval: 400,
+
+  calibrationMs: 3000,
+  calibrationMargin: 2.2,
+  calibrationMarginVoice: 1.5,  // ms bajo = ms sensible a la voz
+
+  knockAttackFrames: 2,
+  knockDecayMaxFrames: 12,
+  knockMinRiseRatio: 1.5,
+  minKnockInterval: 250,
   knockWindowMs: 6000,
-  voiceSustainFrames: 15,
-  cooldownKnockMs: 1500,
-  cooldownVoiceMs: 5000,
-  calibrationMs: 2500,
-  margin: 2.0,
-  minKnockThreshold: 0.08,
-  minVoiceThreshold: 0.07,
-  silenceFloor: 0.025,
+  cooldownKnockMs: 800,
+
+  voiceMinF0: 75,
+  voiceMaxF0: 400,
+  voiceMinCorrelation: 0.25,   // bajo para captar susurros/voz dbil
+  voiceSustainFrames: 6,        // pocos frames para detectar voz rpido
+  voiceMaxGapFrames: 3,
+  cooldownVoiceMs: 4000,
+  voiceEnergyWindowFrames: 6,
+  voiceMaxDecayRatio: 0.85,
+
+  silenceFloor: 0.02,
+  historySize: 60,
 };
 
-let audioCtx, analyser, mediaStream, source;
-let isListening = false, animFrame, calibrating = false;
-let calSamplesK = [], calSamplesV = [], calStart = 0;
-let knockThresh = 0.12, voiceThresh = 0.10;
-let lastKnockTime = -99999, lastAlertTime = { knock: -99999, voice: -99999 };
-let alertCount = 0, consecutiveKnocks = [], voiceFramesAbove = 0;
+// ============================================================
+// State
+// ============================================================
+let audioCtx = null;
+let analyser = null;
+let mediaStream = null;
+let source = null;
+let isListening = false;
+let animFrame = null;
+let energyHistory = new Float32Array(CONFIG.historySize);
+let historyIndex = 0;
+let lastKnockTime = 0;
+let lastAlertTime = { knock: 0, voice: 0 };
+let alertCount = 0;
+let consecutiveKnocks = [];
+let voiceFramesAbove = 0;
+let voiceGapCount = 0;
 
+let isCalibrating = false;
+let calibrationStart = 0;
+let calibrationSamplesKnock = [];
+let calibrationSamplesVoice = [];
+let noiseFloorKnock = 0.05;
+let noiseFloorVoice = 0.05;
+let knockThresholdDynamic = 0.15;
+let voiceThresholdDynamic = 0.06;  // ms bajo = ms sensible
+
+let prevKnockEnergy = 0;
+let knockAttackCounter = 0;
+let knockPeakEnergy = 0;
+let knockDecayCounter = 0;
+let awaitingKnockDecay = false;
+
+let recentOverallEnergies = [];
+
+// ============================================================
+// DOM refs
+// ============================================================
 const statusEl = document.getElementById('status');
 const nivelBar = document.getElementById('nivel-bar');
 const canvas = document.getElementById('waveCanvas');
@@ -272,194 +320,338 @@ const btnCompartir = document.getElementById('btnCompartir');
 const alertasEl = document.getElementById('alertas');
 const alertaCountEl = document.getElementById('alertaCount');
 
+// ============================================================
+// Audio Analysis
+// ============================================================
 function resizeCanvas() {
-  const r = canvas.parentElement.getBoundingClientRect();
-  canvas.width = r.width * (window.devicePixelRatio||1);
-  canvas.height = r.height * (window.devicePixelRatio||1);
-  canvas.style.width = r.width+'px'; canvas.style.height = r.height+'px';
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * (window.devicePixelRatio || 1);
+  canvas.height = rect.height * (window.devicePixelRatio || 1);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
-function eng(data, sr, minHz, maxHz) {
-  const bc = data.length, bf = sr/(2*bc);
-  const s = Math.max(0, Math.floor(minHz/bf)), e = Math.min(bc-1, Math.ceil(maxHz/bf));
-  let sum=0, c=0;
-  for (let i=s; i<=e; i++) sum+=data[i], c++;
-  return c ? sum/c/255 : 0;
+function getEnergyInRange(data, sampleRate, minHz, maxHz) {
+  const binCount = data.length;
+  const binFreq = sampleRate / (2 * binCount);
+  const startBin = Math.max(0, Math.floor(minHz / binFreq));
+  const endBin = Math.min(binCount - 1, Math.ceil(maxHz / binFreq));
+  let sum = 0;
+  let count = 0;
+  for (let i = startBin; i <= endBin; i++) { sum += data[i]; count++; }
+  return count > 0 ? sum / count / 255 : 0;
 }
 
+// ============================================================
+// Calibration
+// ============================================================
+function iniciarCalibracion() {
+  isCalibrating = true;
+  calibrationStart = Date.now();
+  calibrationSamplesKnock = [];
+  calibrationSamplesVoice = [];
+  statusEl.className = 'esucha';
+  statusEl.textContent = ' Calibrando ruido ambiente... no hagas ruido';
+}
+
+function terminarCalibracion() {
+  isCalibrating = false;
+  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  const baseKnock = avg(calibrationSamplesKnock);
+  const baseVoice = avg(calibrationSamplesVoice);
+  noiseFloorKnock = baseKnock;
+  noiseFloorVoice = baseVoice;
+  knockThresholdDynamic = Math.max(0.08, baseKnock * CONFIG.calibrationMargin);
+  voiceThresholdDynamic = Math.max(0.04, baseVoice * CONFIG.calibrationMarginVoice);
+  statusEl.textContent = ' Calibrado. Escuchando...';
+  addAlerta('Calibracin lista', 'voz');
+}
+
+// ============================================================
+// Autocorrelation pitch detection
+// ============================================================
+function autocorrelatePitch(buf, sampleRate, minF0, maxF0) {
+  const n = buf.length;
+  const maxLag = Math.floor(sampleRate / minF0);
+  const minLag = Math.floor(sampleRate / maxF0);
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += buf[i];
+  mean /= n;
+  const signal = new Float32Array(n);
+  let energy = 0;
+  for (let i = 0; i < n; i++) { signal[i] = buf[i] - mean; energy += signal[i] * signal[i]; }
+  if (energy < 1e-6) return { f0: 0, clarity: 0 };
+  const corrs = [];
+  let globalBestCorr = 0;
+  for (let lag = minLag; lag <= maxLag && lag < n; lag++) {
+    let corr = 0;
+    for (let i = 0; i < n - lag; i++) corr += signal[i] * signal[i + lag];
+    corr = corr / (n - lag);
+    corrs.push({ lag, corr });
+    if (corr > globalBestCorr) globalBestCorr = corr;
+  }
+  if (globalBestCorr <= 0) return { f0: 0, clarity: 0 };
+  const acceptThreshold = globalBestCorr * 0.9;
+  let bestLag = -1;
+  for (const { lag, corr } of corrs) {
+    if (corr >= acceptThreshold) { bestLag = lag; break; }
+  }
+  if (bestLag <= 0) return { f0: 0, clarity: 0 };
+  const normEnergy = energy / n;
+  const clarity = Math.max(0, Math.min(1, globalBestCorr / normEnergy));
+  return { f0: sampleRate / bestLag, clarity };
+}
+
+// ============================================================
+// Knock detection (rise + decay)
+// ============================================================
 function detectKnock(energy, now) {
   consecutiveKnocks = consecutiveKnocks.filter(t => now - t < CONFIG.knockWindowMs);
-  if (energy > knockThresh && now - lastKnockTime > CONFIG.minKnockInterval) {
-    consecutiveKnocks.push(now);
-    lastKnockTime = now;
-    const n = consecutiveKnocks.length;
-    if (now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
-      lastAlertTime.knock = now;
-      if (n >= 3) return { label: `¡${n} golpes seguidos!`, force: true };
-      if (n === 2) return { label: '2 golpes', force: true };
-      return { label: 'Golpe', force: false };
+  const riseRatio = prevKnockEnergy > 0.001 ? energy / prevKnockEnergy : 999;
+  const aboveThreshold = energy > knockThresholdDynamic;
+  let result = null;
+
+  if (!awaitingKnockDecay) {
+    if (aboveThreshold && riseRatio >= CONFIG.knockMinRiseRatio) {
+      awaitingKnockDecay = true;
+      knockPeakEnergy = energy;
+      knockDecayCounter = 0;
+    }
+  } else {
+    knockDecayCounter++;
+    if (energy > knockPeakEnergy) knockPeakEnergy = energy;
+    const decayedEnough = energy < knockPeakEnergy * 0.5;
+    if (decayedEnough) {
+      awaitingKnockDecay = false;
+      const timeSinceLast = now - lastKnockTime;
+      if (timeSinceLast > CONFIG.minKnockInterval) {
+        consecutiveKnocks.push(now);
+        lastKnockTime = now;
+        const recent = consecutiveKnocks.length;
+        if (now - lastAlertTime.knock > CONFIG.cooldownKnockMs) {
+          lastAlertTime.knock = now;
+          if (recent >= 3) result = { label: '¡' + recent + ' golpes rtmicos! Posible seal de auxilio', urgency: 'alta', force: true };
+          else if (recent === 2) result = { label: '2 golpes detectados', urgency: 'alta', force: true };
+          else result = { label: 'Golpe detectado', urgency: 'media', force: true };
+        }
+      }
+    } else if (knockDecayCounter > CONFIG.knockDecayMaxFrames) {
+      awaitingKnockDecay = false;
     }
   }
-  return null;
+  prevKnockEnergy = energy;
+  return result;
 }
 
-function detectVoice(energy, now) {
-  if (energy > voiceThresh) voiceFramesAbove++;
-  else voiceFramesAbove = 0;
+// ============================================================
+// Voice detection (pitch + sustain)
+// ============================================================
+function detectVoice(timeData, sampleRate, overallEnergy, now) {
+  const buf = new Float32Array(timeData.length);
+  for (let i = 0; i < timeData.length; i++) buf[i] = (timeData[i] - 128) / 128;
+
+  const { f0, clarity } = autocorrelatePitch(buf, sampleRate, CONFIG.voiceMinF0, CONFIG.voiceMaxF0);
+
+  recentOverallEnergies.push(overallEnergy);
+  if (recentOverallEnergies.length > CONFIG.voiceEnergyWindowFrames) recentOverallEnergies.shift();
+
+  let isMonotonicDecay = false;
+  if (recentOverallEnergies.length >= CONFIG.voiceEnergyWindowFrames) {
+    let decayingSteps = 0;
+    for (let i = 1; i < recentOverallEnergies.length; i++) {
+      if (recentOverallEnergies[i] <= recentOverallEnergies[i - 1] * CONFIG.voiceMaxDecayRatio + 0.0001 ||
+          recentOverallEnergies[i] < recentOverallEnergies[i - 1]) decayingSteps++;
+    }
+    isMonotonicDecay = decayingSteps >= recentOverallEnergies.length - 2;
+  }
+
+  const validPitch = f0 >= CONFIG.voiceMinF0 && f0 <= CONFIG.voiceMaxF0 &&
+                      clarity >= CONFIG.voiceMinCorrelation && !isMonotonicDecay;
+
+  if (validPitch) { voiceFramesAbove++; voiceGapCount = 0; }
+  else { voiceGapCount++; if (voiceGapCount > CONFIG.voiceMaxGapFrames) voiceFramesAbove = 0; }
+
   if (voiceFramesAbove >= CONFIG.voiceSustainFrames && now - lastAlertTime.voice > CONFIG.cooldownVoiceMs) {
-    voiceFramesAbove = 0;
-    lastAlertTime.voice = now;
-    return { label: 'Voz humana detectada', force: true };
+    voiceFramesAbove = 0; voiceGapCount = 0; lastAlertTime.voice = now;
+    return { label: 'Voz humana detectada', urgency: 'alta', force: true };
   }
   return null;
 }
 
-function analyze(sr) {
-  const fd = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteFrequencyData(fd);
-  const td = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteTimeDomainData(td);
+// ============================================================
+// Main analysis
+// ============================================================
+function analyze(sampleRate) {
+  const timeData = new Uint8Array(analyser.frequencyBinCount);
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
 
   let sum = 0;
-  for (let i = 0; i < td.length; i++) { const v = (td[i]-128)/128; sum += v*v; }
-  const oe = Math.min(1, Math.sqrt(sum/td.length)*3);
+  for (let i = 0; i < timeData.length; i++) { const val = (timeData[i] - 128) / 128; sum += val * val; }
+  const overallEnergy = Math.min(1, Math.sqrt(sum / timeData.length) * 3);
 
-  const ke = eng(fd, sr, CONFIG.minFreqKnock, CONFIG.maxFreqKnock);
-  const ve = eng(fd, sr, CONFIG.minFreqVoice, CONFIG.maxFreqVoice);
+  energyHistory[historyIndex % CONFIG.historySize] = overallEnergy;
+  historyIndex++;
 
-  if (calibrating) {
-    calSamplesK.push(ke); calSamplesV.push(ve);
-    nivelBar.style.width = Math.round(oe*100)+'%';
-    statusEl.textContent = '🎚️ Calibrando... ' + Math.round((Date.now()-calStart)/100) / 10 + 's';
-    if (Date.now() - calStart >= CONFIG.calibrationMs) {
-      calibrating = false;
-      const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
-      const bk = avg(calSamplesK), bv = avg(calSamplesV);
-      knockThresh = Math.max(CONFIG.minKnockThreshold, bk * CONFIG.margin);
-      voiceThresh = Math.max(CONFIG.minVoiceThreshold, bv * CONFIG.margin);
-      statusEl.textContent = '✅ Listo. Escuchando...';
-    }
+  const knockEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqKnock, CONFIG.maxFreqKnock);
+  const voiceEnergy = getEnergyInRange(freqData, sampleRate, CONFIG.minFreqVoice, CONFIG.maxFreqVoice);
+
+  if (isCalibrating) {
+    calibrationSamplesKnock.push(knockEnergy);
+    calibrationSamplesVoice.push(voiceEnergy);
+    nivelBar.style.width = Math.round(overallEnergy * 100) + '%';
+    if (Date.now() - calibrationStart >= CONFIG.calibrationMs) terminarCalibracion();
     return;
   }
 
-  if (oe < CONFIG.silenceFloor) {
-    nivelBar.style.width = '0%'; statusEl.className = ''; statusEl.textContent = '🔇 En silencio'; return;
+  if (overallEnergy < CONFIG.silenceFloor) {
+    nivelBar.style.width = '0%'; statusEl.className = ''; statusEl.textContent = ' En silencio - esperando sonidos';
+    prevKnockEnergy = 0;
+    return;
   }
 
-  // Si hay energía de golpe significativa, suprimir voz (el golpe resuena en banda vocal)
-  const vozReal = ke < knockThresh * 0.7 ? ve : 0;
-
   const now = Date.now();
-  const knock = detectKnock(ke, now);
-  const voice = detectVoice(vozReal, now);
+  const knock = detectKnock(knockEnergy, now);
+  const voice = detectVoice(timeData, sampleRate, overallEnergy, now);
 
-  nivelBar.style.width = Math.round(oe*100)+'%';
-  statusEl.className = 'esucha'; statusEl.textContent = '🔊 Escuchando...';
+  nivelBar.style.width = Math.round(overallEnergy * 100) + '%';
+  statusEl.className = 'esucha'; statusEl.textContent = ' Escuchando...';
 
   if (knock) {
-    addAlerta(knock.label,'golpe'); statusEl.className='alerta'; statusEl.textContent='🔴 '+knock.label;
+    addAlerta(knock.label, 'golpe'); statusEl.className = 'alerta'; statusEl.textContent = ' ' + knock.label;
     if (knock.force) vibrar(); return;
   }
   if (voice) {
-    addAlerta(voice.label,'voz'); statusEl.className='alerta'; statusEl.textContent='🔴 '+voice.label;
+    addAlerta(voice.label, 'voz'); statusEl.className = 'alerta'; statusEl.textContent = ' ' + voice.label;
     if (voice.force) vibrar();
   }
 }
 
-function drawWave(td) {
-  const w=canvas.width, h=canvas.height, dpr=window.devicePixelRatio||1;
-  ctx.clearRect(0,0,w,h);
-  const my=h/2, step=Math.max(1,Math.floor(td.length/(w/dpr)));
-  ctx.strokeStyle='#e94560'; ctx.lineWidth=Math.max(1,dpr*1.5); ctx.beginPath();
-  let mx=0;
-  for (let i=0; i<td.length; i+=step) { const v=Math.abs(td[i]-128)/128; if (v>mx) mx=v; }
-  if (mx<0.01) mx=0.01;
-  const sc=(h*0.9)/2/Math.max(0.1,Math.min(1,mx*2));
-  for (let i=0; i<td.length; i+=step) {
-    const x=(i/td.length)*w, y=my+((td[i]-128)/128)*sc;
-    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+// ============================================================
+// Waveform
+// ============================================================
+function drawWave(timeData) {
+  const w = canvas.width; const h = canvas.height; const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, w, h);
+  const midY = h / 2;
+  const step = Math.max(1, Math.floor(timeData.length / (w / dpr)));
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = Math.max(1, dpr * 1.5);
+  ctx.beginPath();
+  let maxVal = 0;
+  for (let i = 0; i < timeData.length; i += step) { const v = Math.abs(timeData[i] - 128) / 128; if (v > maxVal) maxVal = v; }
+  if (maxVal < 0.01) maxVal = 0.01;
+  const scale = (h * 0.9) / 2 / Math.max(0.1, Math.min(1, maxVal * 2));
+  for (let i = 0; i < timeData.length; i += step) {
+    const x = (i / timeData.length) * w;
+    const y = midY + ((timeData[i] - 128) / 128) * scale;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
 }
 
-function addAlerta(msg, t) {
-  alertCount++; alertaCountEl.textContent=alertCount;
-  const d=document.createElement('div'); d.className='alerta-item tipo-'+t;
-  const ts=new Date();
-  const tm=ts.getHours().toString().padStart(2,'0')+':'+ts.getMinutes().toString().padStart(2,'0')+':'+ts.getSeconds().toString().padStart(2,'0');
-  d.innerHTML=`<span class="time">${tm}</span>${t==='golpe'?'💥':'🔊'} ${msg}`;
-  alertasEl.prepend(d);
-  while (alertasEl.children.length>50) alertasEl.removeChild(alertasEl.lastChild);
+// ============================================================
+// UI
+// ============================================================
+function addAlerta(msg, tipo) {
+  alertCount++;
+  alertaCountEl.textContent = alertCount;
+  const div = document.createElement('div');
+  div.className = 'alerta-item tipo-' + tipo;
+  const ts = new Date();
+  const time = ts.getHours().toString().padStart(2,'0') + ':' +
+               ts.getMinutes().toString().padStart(2,'0') + ':' +
+               ts.getSeconds().toString().padStart(2,'0');
+  const icon = tipo === 'golpe' ? '' : '';
+  div.innerHTML = '<span class="time">' + time + '</span>' + icon + ' ' + msg;
+  alertasEl.prepend(div);
+  while (alertasEl.children.length > 50) alertasEl.removeChild(alertasEl.lastChild);
 }
 
-function vibrar() { if (navigator.vibrate) navigator.vibrate([200,100,200,100,400]); }
+function vibrar() { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]); }
 
-function loop() {
+function errorMsg(msg) { statusEl.className = ''; statusEl.textContent = ' ' + msg; }
+
+// ============================================================
+// Audio loop
+// ============================================================
+function audioLoop() {
   if (!isListening) return;
-  const td = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteTimeDomainData(td);
-  drawWave(td);
+  const timeData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(timeData);
+  drawWave(timeData);
   if (audioCtx) analyze(audioCtx.sampleRate);
-  animFrame = requestAnimationFrame(loop);
+  animFrame = requestAnimationFrame(audioLoop);
 }
 
-function err(s) { statusEl.className=''; statusEl.textContent='❌ '+s; }
-
+// ============================================================
+// Start / Stop
+// ============================================================
 async function iniciar() {
   if (isListening) return;
-  if (!window.isSecureContext && !['localhost','127.0.0.1','[::1]'].includes(location.hostname))
-    return err('Usa HTTPS o localhost.');
+  const isSecure = window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '[::1]';
+  if (!isSecure) { errorMsg('Debes usar HTTPS o localhost.'); return; }
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (audioCtx) audioCtx.close();
-    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    if (audioCtx.state==='suspended') await audioCtx.resume();
-    analyser = audioCtx.createAnalyser(); analyser.fftSize = CONFIG.fftSize;
-    source = audioCtx.createMediaStreamSource(mediaStream); source.connect(analyser);
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = CONFIG.fftSize;
+    source = audioCtx.createMediaStreamSource(mediaStream);
+    source.connect(analyser);
     isListening = true;
-    btnIniciar.textContent='▶ ACTIVO'; btnIniciar.classList.add('activo');
+    btnIniciar.textContent = ' ACTIVO';
+    btnIniciar.classList.add('activo');
     btnDetener.classList.add('activo');
-    lastKnockTime=-99999; lastAlertTime={knock:-99999,voice:-99999};
-    consecutiveKnocks=[]; voiceFramesAbove=0;
-    calibrating=true; calSamplesK=[]; calSamplesV=[]; calStart=Date.now();
-    statusEl.textContent='🎚️ Calibrando...'; statusEl.className='esucha';
-    loop();
-  } catch (e) {
-    console.error(e);
-    if (e.name==='NotAllowedError') err('Permiso denegado.');
-    else if (e.name==='NotFoundError') err('Sin micrófono.');
-    else err('Error: '+e.message);
+    statusEl.textContent = ' Escuchando...';
+    statusEl.className = 'esucha';
+    prevKnockEnergy = 0; awaitingKnockDecay = false; voiceFramesAbove = 0; voiceGapCount = 0;
+    consecutiveKnocks = []; recentOverallEnergies = [];
+    lastKnockTime = -1e9; lastAlertTime = { knock: -1e9, voice: -1e9 };
+    iniciarCalibracion();
+    audioLoop();
+  } catch (err) {
+    console.error(err);
+    if (err.name === 'NotAllowedError') errorMsg('Permiso denegado.');
+    else if (err.name === 'NotFoundError') errorMsg('Sin micrfono.');
+    else errorMsg('Error: ' + (err.message || err));
   }
 }
 
 function detener() {
-  isListening=false;
+  isListening = false;
   if (animFrame) cancelAnimationFrame(animFrame);
-  if (mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
   if (audioCtx) audioCtx.close();
-  audioCtx=null; analyser=null; source=null; mediaStream=null;
-  btnIniciar.textContent='▶ INICIAR'; btnIniciar.classList.remove('activo');
+  audioCtx = null; analyser = null; source = null; mediaStream = null;
+  btnIniciar.textContent = ' INICIAR'; btnIniciar.classList.remove('activo');
   btnDetener.classList.remove('activo');
-  statusEl.className=''; statusEl.textContent='Detenido';
+  statusEl.className = ''; statusEl.textContent = 'Detenido';
 }
 
-if (navigator.share)
-  btnCompartir.addEventListener('click',()=>navigator.share({title:'ECORESCATE',text:'App para detectar sonidos bajo escombros. Abre en:',url:location.href}));
-else
-  btnCompartir.addEventListener('click',()=>{navigator.clipboard.writeText(location.href);btnCompartir.textContent='✓';setTimeout(()=>{btnCompartir.textContent='📤';},2000);});
+// ============================================================
+// Events
+// ============================================================
+if (navigator.share) {
+  btnCompartir.addEventListener('click', () => navigator.share({ title: 'ECORESCATE', text: 'App para detectar sonidos bajo escombros.', url: location.href }));
+} else {
+  btnCompartir.addEventListener('click', () => { navigator.clipboard.writeText(location.href); btnCompartir.textContent = ''; setTimeout(() => { btnCompartir.textContent = ''; }, 2000); });
+}
 
-btnIniciar.addEventListener('click',iniciar);
-btnDetener.addEventListener('click',detener);
+btnIniciar.addEventListener('click', iniciar);
+btnDetener.addEventListener('click', detener);
 
-let wl=null;
-async function rwl(){try{if('wakeLock'in navigator) wl=await navigator.wakeLock.request('screen');}catch(e){}}
-btnIniciar.addEventListener('click',rwl);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isListening) rwl();});
+let wakeLock = null;
+async function requestWakeLock() { try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {} }
+btnIniciar.addEventListener('click', requestWakeLock);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isListening) requestWakeLock(); });
 
-if ('serviceWorker'in navigator) navigator.serviceWorker.register('rescate-sw.js');
-console.log('ECORESCATE cargada. 🇻🇪');
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('rescate-sw.js');
+console.log('ECORESCATE cargada.');
 </script>
 </body>
 </html>
