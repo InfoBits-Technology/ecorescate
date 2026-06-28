@@ -1081,9 +1081,22 @@ aplicarAjustes();
     .catch(function(){ document.getElementById('visitCountText').textContent = '0'; });
 })();
 
-// Register service worker
+// Register service worker + auto-refresh en nuevas versiones
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('rescate-sw.js');
+  navigator.serviceWorker.register('rescate-sw.js').then(function(reg) {
+    if (reg.waiting) location.reload();
+    reg.addEventListener('updatefound', function() {
+      var nuevo = reg.installing;
+      nuevo.addEventListener('statechange', function() {
+        if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
+          location.reload();
+        }
+      });
+    });
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    location.reload();
+  });
 }
 
 console.log('ECORESCATE cargada.');

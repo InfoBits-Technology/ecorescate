@@ -1,4 +1,4 @@
-const CACHE = 'rescapp-v1';
+const CACHE = 'ecorescate-v2';
 const FILES = ['index.html', 'rescate-manifest.json', 'rescate-icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -9,6 +9,11 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+    ))
+  );
   e.waitUntil(clients.claim());
 });
 
