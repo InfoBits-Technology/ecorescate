@@ -911,15 +911,17 @@ document.addEventListener('visibilitychange', () => {
 // Contador unico por navegador
 (function(){
   var c = document.getElementById('visitCounter');
-  var k = 'ecorescate_v2';
+  if (!c) return;
+  var k = 'ecorescate_v3';
   if (!localStorage.getItem(k)) {
-    fetch('https://api.countapi.xyz/hit/ecorescate/visitantes').catch(function(){});
     localStorage.setItem(k, '1');
+    c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat" style="height:20px;" alt="Visitas" />';
+  } else {
+    var x = new XMLHttpRequest();
+    x.open('GET', 'https://api.countapi.xyz/get/ecorescate/visitantes', true);
+    x.onload = function(){ try { var d = JSON.parse(x.responseText); if (d && d.value) c.textContent = 'Visitantes: ' + d.value; } catch(e){} };
+    x.send();
   }
-  fetch('https://api.countapi.xyz/get/ecorescate/visitantes')
-    .then(function(r){ return r.json(); })
-    .then(function(d){ if(c) c.textContent = 'Visitantes unicos: ' + d.value; })
-    .catch(function(){ if(c) c.innerHTML = '&lt;img src=&quot;https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat&quot; style=&quot;height:20px;&quot; alt=&quot;Visitas&quot; /&gt;'; });
 })();
 
 // Register service worker
