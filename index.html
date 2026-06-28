@@ -198,6 +198,18 @@ h1 small {
   border: 1px solid #0f3460;
 }
 .instrucciones strong { color: #e94560; }
+#controles2 {
+  display:flex; gap:8px; width:100%;
+}
+.btn2 {
+  flex:1; padding:10px; border:none; border-radius:12px;
+  font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s;
+  background:#16213e; color:#aaa; border:1px solid #0f3460;
+  touch-action: manipulation;
+}
+.btn2.activo { background:#0f3460; color:#e94560; border-color:#e94560; }
+.btn2:active { transform:scale(0.95); }
+
 #btnAjustes {
   position:fixed; bottom:16px; right:16px; width:44px; height:44px;
   border-radius:50%; background:#0f3460; color:#e94560; border:1px solid #e94560;
@@ -259,6 +271,10 @@ h1 small {
     <button id="btnDebug" style="background:none; border:none; color:#555; font-size:0.7rem; text-decoration:underline; padding:4px;">Activar modo diagnóstico</button>
   </div>
 
+  <div id="controles2">
+    <button class="btn2" id="btnLinterna">🔦 Linterna</button>
+    <button class="btn2" id="btnAlerta">🔔 Alerta sonora</button>
+  </div>
   <div class="alertas" id="alertas"></div>
 
   <div class="instrucciones">
@@ -269,7 +285,7 @@ h1 small {
   </div>
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
-    Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
+    Para mi Venezuela ve desde Colombia 🇨🇴
     <br /><span id="visitCounter" style="display:inline-flex; align-items:center; gap:6px; background:#0f3460; color:#fff; padding:3px 14px 3px 10px; border-radius:20px; border:1px solid #e94560; font-size:0.75rem; margin-top:4px; font-weight:600; box-shadow:0 0 8px rgba(233,69,96,0.3);"><span style="background:#e94560; color:#fff; border-radius:50%; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">&#9679;</span><span id="visitCountText">0</span></span>
   </div>
 </div>
@@ -1064,6 +1080,86 @@ aplicarAjustes();
     guardar();
   });
 })();
+
+// ============================================================
+// Linterna (flash LED)
+// ============================================================
+var linternaActiva = false;
+var linternaStream = null;
+var linternaTrack = null;
+
+document.getElementById('btnLinterna').addEventListener('click', function(){
+  var btn = this;
+  if (linternaActiva) {
+    if (linternaTrack) linternaTrack.stop();
+    if (linternaStream) linternaStream.getTracks().forEach(function(t){ t.stop(); });
+    linternaStream = null;
+    linternaTrack = null;
+    linternaActiva = false;
+    btn.classList.remove('activo');
+    btn.textContent = '🔦 Linterna';
+    return;
+  }
+  try {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 1, height: 1 } })
+      .then(function(stream){
+        linternaStream = stream;
+        var track = stream.getVideoTracks()[0];
+        if (track && track.getCapabilities && track.getCapabilities().torch) {
+          track.applyConstraints({ advanced: [{ torch: true }] })
+            .then(function(){
+              linternaTrack = track;
+              linternaActiva = true;
+              btn.classList.add('activo');
+              btn.textContent = '🔦 Apagar';
+            })
+            .catch(function(){
+              stream.getTracks().forEach(function(t){ t.stop(); });
+              addAlerta('Flash no disponible en este dispositivo', 'error');
+            });
+        } else {
+          stream.getTracks().forEach(function(t){ t.stop(); });
+          addAlerta('Flash no disponible en este dispositivo', 'error');
+        }
+      })
+      .catch(function(){
+        addAlerta('Permiso de cámara requerido para linterna', 'error');
+      });
+  } catch(e) {
+    addAlerta('Error: ' + e.message, 'error');
+  }
+});
+
+// ============================================================
+// Alerta sonora (pitido)
+// ============================================================
+document.getElementById('btnAlerta').addEventListener('click', function(){
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // Secuencia tipo sirena: 3 pitidos ascendentes
+    var tiempos = [0, 0.3, 0.7, 1.0, 1.4];
+    var frecuencias = [600, 800, 1000, 800, 600];
+    var duraciones = [0.25, 0.25, 0.35, 0.25, 0.25];
+
+    for (var i = 0; i < tiempos.length; i++) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = frecuencias[i];
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + tiempos[i]);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + tiempos[i] + duraciones[i]);
+      osc.start(ctx.currentTime + tiempos[i]);
+      osc.stop(ctx.currentTime + tiempos[i] + duraciones[i] + 0.05);
+    }
+    addAlerta('Alerta sonora emitida', 'voz');
+  } catch(e) {
+    // Silencio si falla
+  }
+});
 
 // Contador propio sin dependencias externas
 (function(){
