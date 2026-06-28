@@ -242,7 +242,7 @@ h1 small {
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
     Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
-    <br /><span id="visitCounter"></span>
+    <br /><span id="visitCounter" style="display:inline-block; background:#16213e; color:#6bcb77; padding:2px 12px; border-radius:10px; border:1px solid #0f3460; font-size:0.75rem; margin-top:4px;"></span>
   </div>
 </div>
 
@@ -908,14 +908,27 @@ document.addEventListener('visibilitychange', () => {
 });
 
 
-// Contador local de visitas
+// Contador global unico por navegador
 (function(){
   var c = document.getElementById('visitCounter');
   if (!c) return;
-  var n = parseInt(localStorage.getItem('ecorescate_visitas') || '0', 10);
-  n++;
-  localStorage.setItem('ecorescate_visitas', n.toString());
-  c.textContent = 'Visitas: ' + n;
+  var key = 'ecorescate_visit';
+  var stored = localStorage.getItem(key);
+  if (stored) {
+    c.textContent = 'Visitantes unicos: ' + stored;
+  } else {
+    fetch('https://api.countapi.xyz/hit/ecorescate/visitantes')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d && d.value) {
+          localStorage.setItem(key, d.value);
+          c.textContent = 'Visitantes unicos: ' + d.value;
+        }
+      })
+      .catch(function(){
+        c.textContent = 'Gracias por visitar';
+      });
+  }
 })();
 
 // Register service worker
