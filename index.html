@@ -198,6 +198,34 @@ h1 small {
   border: 1px solid #0f3460;
 }
 .instrucciones strong { color: #e94560; }
+#btnAjustes {
+  position:fixed; bottom:16px; right:16px; width:44px; height:44px;
+  border-radius:50%; background:#0f3460; color:#e94560; border:1px solid #e94560;
+  font-size:1.4rem; cursor:pointer; z-index:10;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 2px 12px rgba(0,0,0,0.5); transition:all 0.2s;
+}
+#btnAjustes:active { transform:scale(0.9); }
+
+#panelAjustes {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,0.7); z-index:20;
+  align-items:center; justify-content:center;
+}
+#panelAjustes.activo { display:flex; }
+#panelAjustes .contenido {
+  background:#16213e; border-radius:20px; padding:24px; max-width:360px;
+  width:90%; border:1px solid #e94560; max-height:80vh; overflow-y:auto;
+}
+#panelAjustes h3 { color:#e94560; font-size:1.1rem; margin-bottom:16px; text-align:center; }
+#panelAjustes label { display:block; color:#ccc; font-size:0.85rem; margin-bottom:4px; }
+#panelAjustes .grupo { margin-bottom:16px; }
+#panelAjustes .grupo .valor { float:right; color:#6bcb77; font-weight:700; font-size:0.9rem; }
+#panelAjustes input[type=range] { width:100%; height:6px; -webkit-appearance:none; background:#0f3460; border-radius:3px; outline:none; }
+#panelAjustes input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#e94560; cursor:pointer; }
+#panelAjustes .btn-cerrar { width:100%; padding:12px; border:none; border-radius:12px; background:#e94560; color:#fff; font-weight:700; font-size:1rem; cursor:pointer; margin-top:8px; }
+#panelAjustes .btn-default { width:100%; padding:8px; border:none; border-radius:10px; background:transparent; color:#666; font-size:0.8rem; cursor:pointer; margin-top:4px; text-decoration:underline; }
+
 @media (max-width: 360px) {
   h1 { font-size: 1.3rem; }
   .btn { font-size: 0.9rem; padding: 14px; }
@@ -243,6 +271,24 @@ h1 small {
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
     Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
     <br /><span id="visitCounter" style="display:inline-flex; align-items:center; gap:6px; background:#0f3460; color:#fff; padding:3px 14px 3px 10px; border-radius:20px; border:1px solid #e94560; font-size:0.75rem; margin-top:4px; font-weight:600; box-shadow:0 0 8px rgba(233,69,96,0.3);"><span style="background:#e94560; color:#fff; border-radius:50%; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">&#9679;</span><span id="visitCountText">0</span></span>
+  </div>
+</div>
+
+<button id="btnAjustes">&#9881;</button>
+
+<div id="panelAjustes">
+  <div class="contenido">
+    <h3>Ajustes de sensibilidad</h3>
+    <div class="grupo">
+      <label>Voz <span class="valor" id="valVoz">5</span></label>
+      <input type="range" id="sensVoz" min="1" max="10" value="5" />
+    </div>
+    <div class="grupo">
+      <label>Golpes <span class="valor" id="valGolpe">5</span></label>
+      <input type="range" id="sensGolpe" min="1" max="10" value="5" />
+    </div>
+    <button class="btn-cerrar" id="btnCerrarAjustes">Cerrar</button>
+    <button class="btn-default" id="btnDefaultAjustes">Restablecer valores</button>
   </div>
 </div>
 
@@ -907,6 +953,74 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+
+// ============================================================
+// Ajustes de sensibilidad
+// ============================================================
+var ajustesGuardados = JSON.parse(localStorage.getItem('ecorescate_ajustes') || '{}');
+
+function aplicarAjustes() {
+  var sv = parseInt(ajustesGuardados.voz || '5', 10);
+  var sg = parseInt(ajustesGuardados.golpe || '5', 10);
+
+  // Voz: 1 (max sens) -> 10 (min sens)
+  CONFIG.calibrationMarginVoice = 3.2 - (sv - 1) * 0.25;
+  CONFIG.calibrationMarginVoice = Math.max(1.0, Math.min(3.0, CONFIG.calibrationMarginVoice));
+  CONFIG.voiceMinCorrelation = 0.65 - (sv - 1) * 0.06;
+  CONFIG.voiceMinCorrelation = Math.max(0.10, Math.min(0.65, CONFIG.voiceMinCorrelation));
+  CONFIG.voiceSustainFrames = 11 - sv;
+
+  // Golpe: 1 (max sens) -> 10 (min sens)
+  CONFIG.calibrationMargin = 3.5 - (sg - 1) * 0.25;
+  CONFIG.calibrationMargin = Math.max(1.5, Math.min(3.5, CONFIG.calibrationMargin));
+  CONFIG.knockMinRiseRatio = 2.5 - (sg - 1) * 0.15;
+  CONFIG.knockMinRiseRatio = Math.max(1.0, Math.min(2.5, CONFIG.knockMinRiseRatio));
+  CONFIG.minKnockInterval = 400 - (sg - 1) * 25;
+  CONFIG.minKnockInterval = Math.max(150, Math.min(400, CONFIG.minKnockInterval));
+}
+
+aplicarAjustes();
+
+// UI eventos ajustes
+(function(){
+  var btn = document.getElementById('btnAjustes');
+  var panel = document.getElementById('panelAjustes');
+  var cerrar = document.getElementById('btnCerrarAjustes');
+  var def = document.getElementById('btnDefaultAjustes');
+  var sVoz = document.getElementById('sensVoz');
+  var sGolpe = document.getElementById('sensGolpe');
+  var vVoz = document.getElementById('valVoz');
+  var vGolpe = document.getElementById('valGolpe');
+  if (!btn || !panel) return;
+
+  function abrir() {
+    sVoz.value = ajustesGuardados.voz || '5';
+    sGolpe.value = ajustesGuardados.golpe || '5';
+    vVoz.textContent = sVoz.value;
+    vGolpe.textContent = sGolpe.value;
+    panel.classList.add('activo');
+  }
+
+  function guardar() {
+    ajustesGuardados.voz = sVoz.value;
+    ajustesGuardados.golpe = sGolpe.value;
+    localStorage.setItem('ecorescate_ajustes', JSON.stringify(ajustesGuardados));
+    aplicarAjustes();
+  }
+
+  btn.addEventListener('click', abrir);
+  cerrar.addEventListener('click', function(){ panel.classList.remove('activo'); });
+  panel.addEventListener('click', function(e){ if (e.target === panel) panel.classList.remove('activo'); });
+  sVoz.addEventListener('input', function(){ vVoz.textContent = this.value; guardar(); });
+  sGolpe.addEventListener('input', function(){ vGolpe.textContent = this.value; guardar(); });
+  def.addEventListener('click', function(){
+    ajustesGuardados = {};
+    localStorage.removeItem('ecorescate_ajustes');
+    sVoz.value = '5'; sGolpe.value = '5';
+    vVoz.textContent = '5'; vGolpe.textContent = '5';
+    guardar();
+  });
+})();
 
 // Contador propio sin dependencias externas
 (function(){
