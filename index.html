@@ -908,14 +908,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 
-// Contador unico por navegador
+// Contador: cuenta 1 vez por navegador
 (function(){
   var c = document.getElementById('visitCounter');
   if (!c) return;
-  if (!localStorage.getItem('ecorescate_v4')) {
-    localStorage.setItem('ecorescate_v4', '1');
+  if (!localStorage.getItem('ecorescate_v5')) {
+    localStorage.setItem('ecorescate_v5', '1');
+    c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat" style="height:20px;" alt="Visitas" />';
   }
-  c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat" style="height:20px;" alt="Visitas" />';
 })();
 
 // Register service worker
