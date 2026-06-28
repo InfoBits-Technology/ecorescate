@@ -274,6 +274,7 @@ h1 small {
   <div id="controles2">
     <button class="btn2" id="btnLinterna">🔦 Linterna</button>
     <button class="btn2" id="btnAlerta">🔔 Alerta sonora</button>
+    <button class="btn2" id="btnUbicacion">📍 Ubicación</button>
   </div>
   <div class="alertas" id="alertas"></div>
 
@@ -1159,6 +1160,42 @@ document.getElementById('btnAlerta').addEventListener('click', function(){
   } catch(e) {
     // Silencio si falla
   }
+});
+
+// ============================================================
+// Compartir ubicación
+// ============================================================
+document.getElementById('btnUbicacion').addEventListener('click', function(){
+  var btn = this;
+  if (!navigator.geolocation) {
+    addAlerta('Geolocalización no soportada en este dispositivo', 'error');
+    return;
+  }
+  btn.textContent = '📍 Obteniendo...';
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      var lat = pos.coords.latitude;
+      var lon = pos.coords.longitude;
+      var mapa = 'https://www.google.com/maps?q=' + lat + ',' + lon;
+      var texto = '📍 RescApp - Coordenadas:\n' + lat.toFixed(6) + ', ' + lon.toFixed(6) + '\n' + mapa;
+      if (navigator.share) {
+        navigator.share({ title: 'RescApp - Ubicación', text: texto }).catch(function(){});
+      } else {
+        navigator.clipboard.writeText(texto).then(function(){
+          addAlerta('Coordenadas copiadas al portapapeles', 'voz');
+        }).catch(function(){
+          addAlerta('GPS: ' + lat.toFixed(6) + ', ' + lon.toFixed(6), 'voz');
+        });
+      }
+      btn.textContent = '📍 Ubicación';
+    },
+    function(err){
+      btn.textContent = '📍 Ubicación';
+      if (err.code === 1) addAlerta('Permiso de ubicación denegado', 'error');
+      else addAlerta('Error obteniendo ubicación', 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
 });
 
 // Contador propio sin dependencias externas
