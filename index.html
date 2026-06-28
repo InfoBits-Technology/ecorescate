@@ -1132,17 +1132,34 @@ document.getElementById('btnLinterna').addEventListener('click', function(){
 });
 
 // ============================================================
-// Alerta sonora (pitido)
+// Alerta sonora (repetitiva hasta detenerla)
 // ============================================================
-document.getElementById('btnAlerta').addEventListener('click', function(){
-  try {
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    if (ctx.state === 'suspended') ctx.resume();
+var alertaSonoraActiva = false;
+var alertaCtx = null;
+var alertaTimeout = null;
 
-    // Secuencia tipo sirena: 3 pitidos ascendentes
+function detenerAlerta() {
+  alertaSonoraActiva = false;
+  if (alertaTimeout) { clearTimeout(alertaTimeout); alertaTimeout = null; }
+  if (alertaCtx) { alertaCtx.close(); alertaCtx = null; }
+  document.getElementById('btnAlerta').textContent = '🔔 Alerta sonora';
+  document.getElementById('btnAlerta').classList.remove('activo');
+}
+
+function reproducirCiclo() {
+  if (!alertaSonoraActiva) return;
+  try {
+    if (!alertaCtx) {
+      alertaCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (alertaCtx.state === 'suspended') alertaCtx.resume();
+
+    var ctx = alertaCtx;
+    var ahora = ctx.currentTime;
     var tiempos = [0, 0.3, 0.7, 1.0, 1.4];
     var frecuencias = [600, 800, 1000, 800, 600];
-    var duraciones = [0.25, 0.25, 0.35, 0.25, 0.25];
+    var duraciones = [0.3, 0.3, 0.4, 0.3, 0.3];
+    var fin = 0;
 
     for (var i = 0; i < tiempos.length; i++) {
       var osc = ctx.createOscillator();
@@ -1150,16 +1167,26 @@ document.getElementById('btnAlerta').addEventListener('click', function(){
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.frequency.value = frecuencias[i];
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.4, ctx.currentTime + tiempos[i]);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + tiempos[i] + duraciones[i]);
-      osc.start(ctx.currentTime + tiempos[i]);
-      osc.stop(ctx.currentTime + tiempos[i] + duraciones[i] + 0.05);
+      osc.type = 'square';
+      gain.gain.setValueAtTime(0.7, ahora + tiempos[i]);
+      gain.gain.exponentialRampToValueAtTime(0.01, ahora + tiempos[i] + duraciones[i]);
+      osc.start(ahora + tiempos[i]);
+      osc.stop(ahora + tiempos[i] + duraciones[i] + 0.05);
+      fin = tiempos[i] + duraciones[i];
     }
-    addAlerta('Alerta sonora emitida', 'voz');
-  } catch(e) {
-    // Silencio si falla
-  }
+
+    alertaTimeout = setTimeout(reproducirCiclo, (fin + 1) * 1000);
+  } catch(e) {}
+}
+
+document.getElementById('btnAlerta').addEventListener('click', function(){
+  if (alertaSonoraActiva) { detenerAlerta(); return; }
+
+  alertaSonoraActiva = true;
+  this.textContent = '🔔 Detener';
+  this.classList.add('activo');
+  addAlerta('Alerta sonora activa - esperando señal de respuesta', 'voz');
+  reproducirCiclo();
 });
 
 // ============================================================
