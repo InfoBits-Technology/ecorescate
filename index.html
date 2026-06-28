@@ -242,6 +242,7 @@ h1 small {
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
     Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
+    <br /><span id="visitCounter" style="color:#444;"></span>
   </div>
 </div>
 
@@ -911,7 +912,21 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('rescate-sw.js');
 }
 
-console.log('ECORESCATE cargada. 🇻🇪');
+console.log('ECORESCATE cargada.');
+
+// Visit counter
+(function(){
+  var k='ecorescate_visit';
+  if(!localStorage.getItem(k)){
+    fetch('https://api.countapi.xyz/hit/ecorescate/visitantes').catch(function(){});
+    localStorage.setItem(k,'1');
+  }
+  fetch('https://api.countapi.xyz/get/ecorescate/visitantes')
+    .then(function(r){return r.json();})
+    .then(function(d){document.getElementById('visitCounter').textContent='Visitantes: '+d.value;})
+    .catch(function(){});
+})();
 </script>
 </body>
 </html>
+
