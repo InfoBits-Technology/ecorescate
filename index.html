@@ -912,16 +912,10 @@ document.addEventListener('visibilitychange', () => {
 (function(){
   var c = document.getElementById('visitCounter');
   if (!c) return;
-  var k = 'ecorescate_v3';
-  if (!localStorage.getItem(k)) {
-    localStorage.setItem(k, '1');
-    c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat" style="height:20px;" alt="Visitas" />';
-  } else {
-    var x = new XMLHttpRequest();
-    x.open('GET', 'https://api.countapi.xyz/get/ecorescate/visitantes', true);
-    x.onload = function(){ try { var d = JSON.parse(x.responseText); if (d && d.value) c.textContent = 'Visitantes: ' + d.value; } catch(e){} };
-    x.send();
+  if (!localStorage.getItem('ecorescate_v4')) {
+    localStorage.setItem('ecorescate_v4', '1');
   }
+  c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat" style="height:20px;" alt="Visitas" />';
 })();
 
 // Register service worker
