@@ -908,27 +908,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 
-// Contador global unico por navegador
+// Contador de visitas
 (function(){
   var c = document.getElementById('visitCounter');
   if (!c) return;
-  var key = 'ecorescate_visit';
-  var stored = localStorage.getItem(key);
-  if (stored) {
-    c.textContent = 'Visitantes unicos: ' + stored;
-  } else {
-    fetch('https://api.countapi.xyz/hit/ecorescate/visitantes')
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if (d && d.value) {
-          localStorage.setItem(key, d.value);
-          c.textContent = 'Visitantes unicos: ' + d.value;
-        }
-      })
-      .catch(function(){
-        c.textContent = 'Gracias por visitar';
-      });
-  }
+  c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FInfoBits-Technology%2Fecorescate&amp;label=ECORESCATE&amp;countColor=%23e94560&amp;style=flat" style="height:22px;" alt="contador" />';
 })();
 
 // Register service worker
