@@ -242,7 +242,7 @@ h1 small {
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
     Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
-    <br /><span id="visitCounter" style="display:inline-block; background:#16213e; color:#6bcb77; padding:2px 12px; border-radius:10px; border:1px solid #0f3460; font-size:0.75rem; margin-top:4px;"></span>
+    <br /><span id="visitCounter" style="display:inline-flex; align-items:center; gap:6px; background:#0f3460; color:#fff; padding:3px 14px 3px 10px; border-radius:20px; border:1px solid #e94560; font-size:0.75rem; margin-top:4px; font-weight:600; box-shadow:0 0 8px rgba(233,69,96,0.3);"><span style="background:#e94560; color:#fff; border-radius:50%; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem;">&#9679;</span><span id="visitCountText">0</span></span>
   </div>
 </div>
 
@@ -920,8 +920,8 @@ document.addEventListener('visibilitychange', () => {
   }
   fetch(url)
     .then(function(r){ return r.json(); })
-    .then(function(d){ if (d && d.value) c.textContent = 'Visitantes unicos: ' + d.value; })
-    .catch(function(){ c.textContent = ''; });
+    .then(function(d){ if (d && d.value) document.getElementById('visitCountText').textContent = d.value; })
+    .catch(function(){ document.getElementById('visitCountText').textContent = '0'; });
 })();
 
 // Register service worker
