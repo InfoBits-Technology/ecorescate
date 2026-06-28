@@ -280,11 +280,11 @@ h1 small {
   <div class="contenido">
     <h3>Ajustes de sensibilidad</h3>
     <div class="grupo">
-      <label>Voz <span class="valor" id="valVoz">5</span></label>
+      <label>Voz <span class="valor" id="valVoz">5</span> <span id="txtVoz" style="color:#6bcb77;font-size:0.8rem;">Normal</span></label>
       <input type="range" id="sensVoz" min="1" max="10" value="5" />
     </div>
     <div class="grupo">
-      <label>Golpes <span class="valor" id="valGolpe">5</span></label>
+      <label>Golpes <span class="valor" id="valGolpe">5</span> <span id="txtGolpe" style="color:#6bcb77;font-size:0.8rem;">Normal</span></label>
       <input type="range" id="sensGolpe" min="1" max="10" value="5" />
     </div>
     <button class="btn-cerrar" id="btnCerrarAjustes">Cerrar</button>
@@ -991,13 +991,23 @@ aplicarAjustes();
   var sGolpe = document.getElementById('sensGolpe');
   var vVoz = document.getElementById('valVoz');
   var vGolpe = document.getElementById('valGolpe');
+  var tVoz = document.getElementById('txtVoz');
+  var tGolpe = document.getElementById('txtGolpe');
   if (!btn || !panel) return;
+
+  var niveles = ['', 'Máxima', 'Muy alta', 'Alta', 'Media-alta', 'Normal', 'Media-baja', 'Baja', 'Muy baja', 'Mínima', 'Mínima'];
+
+  function actualizarTexto(v, t, el) {
+    el.textContent = niveles[v] || 'Normal';
+  }
 
   function abrir() {
     sVoz.value = ajustesGuardados.voz || '5';
     sGolpe.value = ajustesGuardados.golpe || '5';
     vVoz.textContent = sVoz.value;
     vGolpe.textContent = sGolpe.value;
+    actualizarTexto(parseInt(sVoz.value,10), tVoz, tVoz);
+    actualizarTexto(parseInt(sGolpe.value,10), tGolpe, tGolpe);
     panel.classList.add('activo');
   }
 
@@ -1011,13 +1021,15 @@ aplicarAjustes();
   btn.addEventListener('click', abrir);
   cerrar.addEventListener('click', function(){ panel.classList.remove('activo'); });
   panel.addEventListener('click', function(e){ if (e.target === panel) panel.classList.remove('activo'); });
-  sVoz.addEventListener('input', function(){ vVoz.textContent = this.value; guardar(); });
-  sGolpe.addEventListener('input', function(){ vGolpe.textContent = this.value; guardar(); });
+  sVoz.addEventListener('input', function(){ vVoz.textContent = this.value; actualizarTexto(parseInt(this.value,10), tVoz, tVoz); guardar(); });
+  sGolpe.addEventListener('input', function(){ vGolpe.textContent = this.value; actualizarTexto(parseInt(this.value,10), tGolpe, tGolpe); guardar(); });
   def.addEventListener('click', function(){
     ajustesGuardados = {};
     localStorage.removeItem('ecorescate_ajustes');
     sVoz.value = '5'; sGolpe.value = '5';
     vVoz.textContent = '5'; vGolpe.textContent = '5';
+    actualizarTexto(5, tVoz, tVoz);
+    actualizarTexto(5, tGolpe, tGolpe);
     guardar();
   });
 })();
