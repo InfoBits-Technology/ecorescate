@@ -13,7 +13,7 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.url.startsWith(self.location.origin)) {
+  if (e.request.url.startsWith(self.location.origin) && !e.request.url.includes('counter.php')) {
     e.respondWith(
       caches.match(e.request).then(res => res || fetch(e.request))
     );

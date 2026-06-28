@@ -908,11 +908,20 @@ document.addEventListener('visibilitychange', () => {
 });
 
 
-// Contador de visitas
+// Contador propio sin dependencias externas
 (function(){
   var c = document.getElementById('visitCounter');
   if (!c) return;
-  c.innerHTML = '<img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FInfoBits-Technology%2Fecorescate&amp;label=ECORESCATE&amp;countColor=%23e94560&amp;style=flat" style="height:22px;" alt="contador" />';
+  var key = 'ecorescate_contado';
+  var url = 'counter.php';
+  if (!localStorage.getItem(key)) {
+    url += '?hit=1';
+    localStorage.setItem(key, '1');
+  }
+  fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if (d && d.value) c.textContent = 'Visitantes unicos: ' + d.value; })
+    .catch(function(){ c.textContent = ''; });
 })();
 
 // Register service worker
