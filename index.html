@@ -287,9 +287,35 @@ h1 small {
       <label>Golpes <span class="valor" id="valGolpe">5</span> <span id="txtGolpe" style="color:#6bcb77;font-size:0.8rem;">Normal</span></label>
       <input type="range" id="sensGolpe" min="1" max="10" value="5" />
     </div>
-    <div style="font-size:0.7rem; color:#666; border-top:1px solid #0f3460; padding-top:10px; margin-top:6px;">
-      <b style="color:#999;">Referencia:</b><br />
-      1=Máxima (susurros) · 3=Alta · 5=Normal · 7=Baja · 10=Mínima (solo gritos)
+    <div style="border-top:1px solid #0f3460; padding-top:10px; margin-top:8px;">
+      <div style="font-size:0.65rem; color:#888; margin-bottom:6px; font-weight:600; letter-spacing:1px;">REFERENCIA</div>
+      <div style="display:flex; justify-content:space-between; gap:4px;">
+        <div style="flex:1; text-align:center; background:#1a1a2e; border-radius:8px; padding:6px 2px; border:1px solid #0f3460;">
+          <div style="color:#6bcb77; font-weight:700; font-size:0.9rem;">1</div>
+          <div style="color:#999; font-size:0.6rem;">Máxima</div>
+          <div style="color:#555; font-size:0.55rem;">Susurros</div>
+        </div>
+        <div style="flex:1; text-align:center; background:#1a1a2e; border-radius:8px; padding:6px 2px; border:1px solid #0f3460;">
+          <div style="color:#6bcb77; font-weight:700; font-size:0.9rem;">3</div>
+          <div style="color:#999; font-size:0.6rem;">Alta</div>
+          <div style="color:#555; font-size:0.55rem;">Voz baja</div>
+        </div>
+        <div style="flex:1; text-align:center; background:#1a1a2e; border-radius:8px; padding:6px 2px; border:1px solid #0f3460;">
+          <div style="color:#6bcb77; font-weight:700; font-size:0.9rem;">5</div>
+          <div style="color:#999; font-size:0.6rem;">Normal</div>
+          <div style="color:#555; font-size:0.55rem;">Voz normal</div>
+        </div>
+        <div style="flex:1; text-align:center; background:#1a1a2e; border-radius:8px; padding:6px 2px; border:1px solid #0f3460;">
+          <div style="color:#6bcb77; font-weight:700; font-size:0.9rem;">7</div>
+          <div style="color:#999; font-size:0.6rem;">Baja</div>
+          <div style="color:#555; font-size:0.55rem;">Gritos</div>
+        </div>
+        <div style="flex:1; text-align:center; background:#1a1a2e; border-radius:8px; padding:6px 2px; border:1px solid #0f3460;">
+          <div style="color:#6bcb77; font-weight:700; font-size:0.9rem;">10</div>
+          <div style="color:#999; font-size:0.6rem;">Mínima</div>
+          <div style="color:#555; font-size:0.55rem;">Solo gritos</div>
+        </div>
+      </div>
     </div>
     <button class="btn-cerrar" id="btnCerrarAjustes">Cerrar</button>
     <button class="btn-default" id="btnDefaultAjustes">Restablecer valores</button>
