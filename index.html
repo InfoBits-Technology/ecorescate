@@ -242,7 +242,7 @@ h1 small {
   <div style="font-size:0.7rem; color:#555; text-align:center; padding:8px 0;">
     Creado por José Vásquez &lt;jf.vasquez@outlook.es&gt;<br />
     Aplicación diseñada para la comunidad venezolana desde Colombia 🇨🇴
-    <br /><img src="https://api.visitorbadge.io/api/visitors?path=ecorescate&label=Visitantes&countColor=%23e94560&style=flat" style="height:20px; margin-top:4px;" alt="Visitantes" />
+    <br /><span id="visitCounter"></span>
   </div>
 </div>
 
@@ -906,6 +906,21 @@ document.addEventListener('visibilitychange', () => {
     requestWakeLock();
   }
 });
+
+
+// Contador unico por navegador
+(function(){
+  var c = document.getElementById('visitCounter');
+  var k = 'ecorescate_v2';
+  if (!localStorage.getItem(k)) {
+    fetch('https://api.countapi.xyz/hit/ecorescate/visitantes').catch(function(){});
+    localStorage.setItem(k, '1');
+  }
+  fetch('https://api.countapi.xyz/get/ecorescate/visitantes')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(c) c.textContent = 'Visitantes unicos: ' + d.value; })
+    .catch(function(){ if(c) c.innerHTML = '&lt;img src=&quot;https://api.visitorbadge.io/api/visitors?path=ecorescate&amp;label=Visitas&amp;countColor=%23e94560&amp;style=flat&quot; style=&quot;height:20px;&quot; alt=&quot;Visitas&quot; /&gt;'; });
+})();
 
 // Register service worker
 if ('serviceWorker' in navigator) {
