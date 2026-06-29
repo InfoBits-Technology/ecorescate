@@ -1,7 +1,7 @@
 {
-  "name": "RescApp - Detección de Sonidos",
-  "short_name": "RescApp",
-  "description": "Detección de sonidos humanos bajo escombros",
+  "name": "EcoRescate - Detección de Señales de Vida",
+  "short_name": "EcoRescate",
+  "description": "App de rescate: detecta golpes y voz humana bajo escombros",
   "start_url": "index.html",
   "display": "standalone",
   "orientation": "portrait",
